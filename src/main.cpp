@@ -39,42 +39,43 @@ uint32_t lastBlinkTime = 0;
 uint32_t lastDebounceTime = 0;
 
 uint32_t iterationCount = 0;
-uint32_t totalMicros = 0;
+uint32_t startMeasureMicros = 0; // Для правильного вимірювання пачки ітерацій
 
 // Прапорець переривання (обов'язково volatile)
 volatile bool buttonPressedISR = false;
 
-// Функція переривання (мінімальна, в пам'яті IRAM для ESP32)
+// Функція переривання
 void IRAM_ATTR handleButtonInterrupt() {
     buttonPressedISR = true;
 }
 
 void setup() {
     Serial.begin(115200);
-    delay(2000); 
-    Serial.println("System started!");
+    delay(2000); // Даємо час порту для ініціалізації
+    Serial.println("System started! Setup is done.");
+
     myLed.init();
     
-    // Налаштування кнопки з внутрішньою підтяжкою до живлення
+    // Налаштування кнопки
     pinMode(Config::BUTTON_PIN, INPUT_PULLUP);
-    
-    // Переривання по спаду (FALLING), бо підтяжка до HIGH, натискання замикає на LOW (GND)
     attachInterrupt(digitalPinToInterrupt(Config::BUTTON_PIN), handleButtonInterrupt, FALLING);
 }
 
 void loop() {
-    uint32_t startMicros = micros();
+    // Фіксуємо час на початку першої ітерації з пачки
+    if (iterationCount == 0) {
+        startMeasureMicros = micros();
+    }
+
     uint32_t currentMillis = millis();
 
-    // 1. Обробка кнопки (Антидребезг і логіка у superloop)
+    // 1. Обробка кнопки (Антидребезг)
     if (buttonPressedISR) {
-        buttonPressedISR = false; // Скидаємо прапорець
-
-        // Перевіряємо антидребезг
+        buttonPressedISR = false;
+        
         if (currentMillis - lastDebounceTime > Config::DEBOUNCE_DELAY) {
             lastDebounceTime = currentMillis;
-
-            // Перемикаємо режими: Blinking -> AlwaysOn -> AlwaysOff -> Blinking...
+            
             if (currentMode == WorkMode::Blinking) {
                 currentMode = WorkMode::AlwaysOn;
             } else if (currentMode == WorkMode::AlwaysOn) {
@@ -85,7 +86,7 @@ void loop() {
         }
     }
 
-    // 2. Логіка роботи LED відповідно до поточного режиму
+    // 2. Логіка роботи LED
     switch (currentMode) {
         case WorkMode::Blinking:
             if (currentMillis - lastBlinkTime >= Config::BLINK_INTERVAL) {
@@ -103,14 +104,15 @@ void loop() {
     }
 
     // 3. Вимірювання часу superloop
-    totalMicros += (micros() - startMicros);
     iterationCount++;
 
     if (iterationCount >= Config::MEASURE_ITERATIONS) {
-        float avgTime = (float)totalMicros / Config::MEASURE_ITERATIONS;
+        uint32_t totalTimeFor1000 = micros() - startMeasureMicros; 
+        float avgTime = (float)totalTimeFor1000 / Config::MEASURE_ITERATIONS;
+        
         Serial.print("Avg loop time (us): ");
-        Serial.println(avgTime);
-        iterationCount = 0;
-        totalMicros = 0;
+        Serial.println(avgTime, 4); // Вивід з 4 знаками після коми
+        
+        iterationCount = 0; 
     }
 }
