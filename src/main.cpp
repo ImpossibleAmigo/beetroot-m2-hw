@@ -51,6 +51,8 @@ void IRAM_ATTR handleButtonInterrupt() {
 
 void setup() {
     Serial.begin(115200);
+    delay(2000); 
+    Serial.println("System started!");
     myLed.init();
     
     // Налаштування кнопки з внутрішньою підтяжкою до живлення
